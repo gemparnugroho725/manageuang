@@ -5,6 +5,8 @@ import jwt from "jsonwebtoken";
 import { transactionsRouter } from "./routes/transactions";
 import { walletsRouter } from "./routes/wallets";
 import { authRouter } from "./routes/auth";
+import { categoriesRouter } from "./routes/categories";
+import { titlesRouter } from "./routes/titles";
 
 dotenv.config();
 
@@ -35,6 +37,9 @@ app.use("/api/transactions", requireAuth, transactionsRouter);
 app.use("/api/wallets", requireAuth, walletsRouter);
 // Protect only the /api/auth-code path while keeping other auth endpoints open
 app.use("/api/auth-code", requireAuth);
+// New protected meta endpoints
+app.use("/api/categories", requireAuth, categoriesRouter);
+app.use("/api/titles", requireAuth, titlesRouter);
 
 // Static frontend
 app.use(express.static(path.join(__dirname, "../public")));

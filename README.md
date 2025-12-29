@@ -32,6 +32,22 @@ CREATE TABLE transactions (
 );
 ```
 
+Tambahkan tabel referensi untuk kategori dan judul:
+
+```sql
+CREATE TABLE IF NOT EXISTS categories (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS titles (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
 ## Install & Run
 
 ```bash
@@ -98,6 +114,8 @@ Endpoints fungsi Netlify:
 - Login: `/api/auth-login` (POST `{ email, password }` → `{ token, userId }`)
 - Semua endpoint data (`/api/transactions`, `/api/wallets`) membutuhkan header `Authorization: Bearer <JWT>`
 - Kode registrasi: `/api/auth-code` (GET, perlu JWT). Kode 6 digit berganti setiap 5 menit.
+- Kategori: `/api/categories` (GET list, POST { name }, DELETE `/:id`)
+- Judul: `/api/titles` (GET list, POST { name }, DELETE `/:id`)
 
 Tambahkan halaman:
 - `public/register.html` dan `public/login.html` untuk UI.
@@ -110,3 +128,7 @@ Proses Registrasi (wajib kode):
 Untuk mewajibkan login:
 - Halaman utama akan otomatis redirect ke `login.html` jika token belum ada.
 - Tombol Logout disediakan di header untuk menghapus token dan kembali ke `login.html`.
+
+Catatan kategori & judul:
+- Aplikasi kini menyimpan daftar kategori dan judul di Supabase (bukan `localStorage`).
+- Saat pertama kali kosong, kategori default akan otomatis di-seed: "Makan", "Transport", "Belanja", "Pendidikan", "Hiburan".

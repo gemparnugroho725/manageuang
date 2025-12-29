@@ -1,10 +1,40 @@
 let wallets = [];
-let titles = JSON.parse(localStorage.getItem("titles") || '[]');
-let categories = JSON.parse(localStorage.getItem("categories") || '["Makan", "Transport", "Belanja", "Pendidikan", "Hiburan"]');
+let titles = [];
+let categories = [];
+const titleIds = {};
+const categoryIds = {};
 let allTransactions = [];
 let reportChart = null;
 let selectedHeaderDate = new Date().toISOString().slice(0, 10);
 let selectedPeriod = 'daily'; // 'daily' | 'weekly' | 'monthly'
+
+// Usage counters derived from transactions
+function computeTitleUsage() {
+  const counts = {};
+  (allTransactions || []).forEach(t => {
+    if (!t || !t.note) return;
+    let title = '';
+    if (t.note.includes(':')) {
+      const parts = t.note.split(':');
+      title = (parts.slice(1).join(':') || '').trim();
+    } else {
+      title = (t.note || '').trim();
+    }
+    if (title) counts[title] = (counts[title] || 0) + 1;
+  });
+  return counts;
+}
+
+function computeCategoryUsage() {
+  const counts = {};
+  (allTransactions || []).forEach(t => {
+    if (!t || !t.note) return;
+    if (!t.note.includes(':')) return; // skip unknown category
+    const cat = (t.note.split(':')[0] || '').trim();
+    if (cat) counts[cat] = (counts[cat] || 0) + 1;
+  });
+  return counts;
+}
 
 function formatIDR(amount) {
   const n = Number(amount) || 0;
@@ -127,6 +157,35 @@ async function loadWallets() {
   const res = await apiFetch("/api/wallets");
   wallets = await res.json();
   renderWallets();
+}
+
+async function loadTitles() {
+  const res = await apiFetch('/api/titles');
+  const data = await res.json();
+  // Reset
+  titles = [];
+  Object.keys(titleIds).forEach(k => delete titleIds[k]);
+  (data || []).forEach((t) => { titles.push(t.name); titleIds[t.name] = t.id; });
+  populateTitleSelect();
+  if (document.getElementById('page-manage-titles')?.classList.contains('active')) renderTitlesList();
+}
+
+async function loadCategories() {
+  const res = await apiFetch('/api/categories');
+  const data = await res.json();
+  categories = [];
+  Object.keys(categoryIds).forEach(k => delete categoryIds[k]);
+  (data || []).forEach((c) => { categories.push(c.name); categoryIds[c.name] = c.id; });
+  // Seed defaults if empty
+  if ((data || []).length === 0) {
+    const defaults = ["Makan", "Transport", "Belanja", "Pendidikan", "Hiburan"];
+    for (const name of defaults) {
+      await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    }
+    return loadCategories();
+  }
+  populateCategorySelect();
+  if (document.getElementById('page-manage-categories')?.classList.contains('active')) renderCategoriesList();
 }
 
 function renderWallets() {
@@ -257,7 +316,7 @@ function renderTransaksi() {
 }
 
 let editingTxId = null;
-function beginEditTx(t) {
+async function beginEditTx(t) {
   editingTxId = t.id;
   selectedTxType = t.type;
   document.getElementById("add-tx-title").textContent = "Edit Transaksi";
@@ -290,14 +349,12 @@ function beginEditTx(t) {
     ttl = t.note || '';
   }
   if (ttl && !titles.includes(ttl)) {
-    titles.push(ttl);
-    localStorage.setItem("titles", JSON.stringify(titles));
-    populateTitleSelect();
+    await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ttl }) });
+    await loadTitles();
   }
   if (cat && !categories.includes(cat)) {
-    categories.push(cat);
-    localStorage.setItem("categories", JSON.stringify(categories));
-    populateCategorySelect();
+    await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cat }) });
+    await loadCategories();
   }
   document.getElementById("tx-date").value = t.date;
   document.getElementById("tx-wallet").value = t.wallet_id || '';
@@ -375,7 +432,14 @@ function selectTxType(type) {
 function populateTitleSelect() {
   const select = document.getElementById("tx-title");
   select.innerHTML = '<option value="">Pilih Judul</option>';
-  titles.forEach(t => {
+  const usage = computeTitleUsage();
+  const ordered = [...titles].sort((a, b) => {
+    const da = usage[a] || 0;
+    const db = usage[b] || 0;
+    if (db !== da) return db - da;
+    return a.localeCompare(b);
+  });
+  ordered.forEach(t => {
     select.innerHTML += `<option value="${t}">${t}</option>`;
   });
   select.innerHTML += '<option value="add-new">+ Add New</option>';
@@ -385,7 +449,14 @@ function populateTitleSelect() {
 function populateCategorySelect() {
   const select = document.getElementById("tx-category");
   select.innerHTML = '<option value="">Pilih Kategori</option>';
-  categories.forEach(c => {
+  const usage = computeCategoryUsage();
+  const ordered = [...categories].sort((a, b) => {
+    const da = usage[a] || 0;
+    const db = usage[b] || 0;
+    if (db !== da) return db - da;
+    return a.localeCompare(b);
+  });
+  ordered.forEach(c => {
     select.innerHTML += `<option value="${c}">${c}</option>`;
   });
   select.innerHTML += '<option value="add-new-cat">+ Add New</option>';
@@ -417,31 +488,17 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   if (title === "add-new") {
     title = prompt("Masukkan judul baru:");
     if (!title) return;
-    // Add to titles array
-    titles.push(title);
-    localStorage.setItem("titles", JSON.stringify(titles));
-    // Add to select options
-    const select = document.getElementById("tx-title");
-    const option = document.createElement("option");
-    option.value = title;
-    option.text = title;
-    select.add(option, select.options[select.options.length - 1]);
-    select.value = title;
+    await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: title }) });
+    await loadTitles();
+    document.getElementById("tx-title").value = title;
   }
 
   if (category === "add-new-cat") {
     category = prompt("Masukkan kategori baru:");
     if (!category) return;
-    // Add to categories array
-    categories.push(category);
-    localStorage.setItem("categories", JSON.stringify(categories));
-    // Add to select options
-    const select = document.getElementById("tx-category");
-    const option = document.createElement("option");
-    option.value = category;
-    option.text = category;
-    select.add(option, select.options[select.options.length - 1]);
-    select.value = category;
+    await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: category }) });
+    await loadCategories();
+    document.getElementById("tx-category").value = category;
   }
 
   if (!date || !walletId || !amount || !title || !category) return;
@@ -507,11 +564,11 @@ function switchTab(name, btn) {
 function renderTitlesList() {
   const container = document.getElementById("titles-container");
   container.innerHTML = "";
-  titles.forEach((t, i) => {
+  titles.forEach((t) => {
     container.innerHTML += `
       <div class="manage-item">
         <span>${t}</span>
-        <button onclick="deleteTitle(${i})">Delete</button>
+        <button onclick="deleteTitleByName('${"${t}".replace(/'/g, "\\'")}')">Delete</button>
       </div>
     `;
   });
@@ -521,31 +578,29 @@ function renderTitlesList() {
 function addTitle() {
   const newTitle = prompt("Masukkan judul baru:");
   if (!newTitle) return;
-  titles.push(newTitle);
-  localStorage.setItem("titles", JSON.stringify(titles));
-  renderTitlesList();
-  populateTitleSelect();
+  apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newTitle }) })
+    .then(() => { loadTitles(); });
 }
 
 /* DELETE TITLE */
-function deleteTitle(index) {
-  if (confirm("Hapus judul ini?")) {
-    titles.splice(index, 1);
-    localStorage.setItem("titles", JSON.stringify(titles));
-    renderTitlesList();
-    populateTitleSelect();
-  }
+function deleteTitleByName(name) {
+  if (!name) return;
+  if (!confirm("Hapus judul ini?")) return;
+  const id = titleIds[name];
+  if (!id) { alert('ID judul tidak ditemukan'); return; }
+  apiFetch(`/api/titles/${id}`, { method: 'DELETE' })
+    .then(() => loadTitles());
 }
 
 /* RENDER CATEGORIES LIST */
 function renderCategoriesList() {
   const container = document.getElementById("categories-container");
   container.innerHTML = "";
-  categories.forEach((c, i) => {
+  categories.forEach((c) => {
     container.innerHTML += `
       <div class="manage-item">
         <span>${c}</span>
-        <button onclick="deleteCategory(${i})">Delete</button>
+        <button onclick="deleteCategoryByName('${"${c}".replace(/'/g, "\\'")}')">Delete</button>
       </div>
     `;
   });
@@ -555,20 +610,18 @@ function renderCategoriesList() {
 function addCategory() {
   const newCat = prompt("Masukkan kategori baru:");
   if (!newCat) return;
-  categories.push(newCat);
-  localStorage.setItem("categories", JSON.stringify(categories));
-  renderCategoriesList();
-  populateCategorySelect();
+  apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCat }) })
+    .then(() => { loadCategories(); });
 }
 
 /* DELETE CATEGORY */
-function deleteCategory(index) {
-  if (confirm("Hapus kategori ini?")) {
-    categories.splice(index, 1);
-    localStorage.setItem("categories", JSON.stringify(categories));
-    renderCategoriesList();
-    populateCategorySelect();
-  }
+function deleteCategoryByName(name) {
+  if (!name) return;
+  if (!confirm("Hapus kategori ini?")) return;
+  const id = categoryIds[name];
+  if (!id) { alert('ID kategori tidak ditemukan'); return; }
+  apiFetch(`/api/categories/${id}`, { method: 'DELETE' })
+    .then(() => loadCategories());
 }
 
 /* SWITCH REPORT */
@@ -723,6 +776,8 @@ window.addEventListener('DOMContentLoaded', () => {
   ensureAuth();
   // Load wallets and transactions initially
   loadWallets();
+  loadCategories();
+  loadTitles();
   load();
   // Prepare report defaults
   setReportPeriod('daily');
