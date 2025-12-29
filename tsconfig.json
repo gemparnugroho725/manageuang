@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    /* Target runtime */
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+
+    /* Project structure */
+    "rootDir": "src",
+    "outDir": "dist",
+
+    /* Interop */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Type safety */
+    "strict": true,
+    "skipLibCheck": true,
+
+    /* Quality of life */
+    "forceConsistentCasingInFileNames": true,
+
+    /* IMPORTANT: matikan ESM ketat */
+    "verbatimModuleSyntax": false
+  }
+}
