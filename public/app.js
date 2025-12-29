@@ -104,8 +104,27 @@ function renderHeaderPeriodValue() {
   }
 }
 
+// Auth helpers
+function getToken() {
+  return sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token') || '';
+}
+
+function ensureAuth() {
+  const t = getToken();
+  if (!t) {
+    window.location.href = '/login.html';
+  }
+}
+
+async function apiFetch(path, opts = {}) {
+  const t = getToken();
+  const headers = Object.assign({}, opts.headers || {});
+  if (t) headers['Authorization'] = 'Bearer ' + t;
+  return fetch(path, Object.assign({}, opts, { headers }));
+}
+
 async function loadWallets() {
-  const res = await fetch("/api/wallets");
+  const res = await apiFetch("/api/wallets");
   wallets = await res.json();
   renderWallets();
 }
@@ -137,7 +156,7 @@ async function addWallet() {
   const balance = Number(prompt("Saldo awal:")) || 0;
   if (!name) return;
 
-  await fetch("/api/wallets", {
+  await apiFetch("/api/wallets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, balance })
@@ -151,7 +170,7 @@ async function editWallet(id, name, balance) {
   const newBalance = Number(prompt("Saldo:", balance));
   if (!newName) return;
 
-  await fetch(`/api/wallets/${id}`, {
+  await apiFetch(`/api/wallets/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: newName, balance: newBalance })
@@ -162,7 +181,7 @@ async function editWallet(id, name, balance) {
 
 async function deleteWallet(id) {
   if (!confirm('Hapus wallet ini? Semua transaksi terkait mungkin memblokir penghapusan.')) return;
-  const res = await fetch(`/api/wallets/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/wallets/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     alert(j.error || 'Gagal menghapus wallet');
@@ -173,7 +192,7 @@ async function deleteWallet(id) {
 
 /* LOAD DATA */
 async function load() {
-  const res = await fetch("/api/transactions");
+  const res = await apiFetch("/api/transactions");
   allTransactions = await res.json();
 
   renderTransaksi();
@@ -247,7 +266,7 @@ function beginEditTx(t) {
     delBtn.style.display = 'inline-block';
     delBtn.onclick = async () => {
       if (!confirm('Hapus transaksi ini?')) return;
-      await fetch(`/api/transactions/${editingTxId}`, { method: 'DELETE' });
+      await apiFetch(`/api/transactions/${editingTxId}`, { method: 'DELETE' });
       editingTxId = null;
       document.getElementById("form-add-tx").reset();
       document.getElementById("add-tx-title").textContent = "Add Transaction";
@@ -437,13 +456,13 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   };
 
   if (editingTxId) {
-    await fetch(`/api/transactions/${editingTxId}`, {
+    await apiFetch(`/api/transactions/${editingTxId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
   } else {
-    await fetch("/api/transactions", {
+    await apiFetch("/api/transactions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -701,6 +720,7 @@ function generateReport(period, basis, periodValue, chartType = 'pie') {
 
 // Initial load on page ready
 window.addEventListener('DOMContentLoaded', () => {
+  ensureAuth();
   // Load wallets and transactions initially
   loadWallets();
   load();
@@ -721,6 +741,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (prevBtn) prevBtn.addEventListener('click', () => stepSelectedDate(-1));
   if (nextBtn) nextBtn.addEventListener('click', () => stepSelectedDate(1));
   renderHeaderPeriodValue();
+
+  // Registration Code handled by global functions
 
   // Modal close interactions
   const closeBtn = document.getElementById('modal-close');
@@ -788,8 +810,50 @@ document.addEventListener('submit', async (e) => {
     const name = document.getElementById('wallet-name').value.trim();
     const balance = Number(document.getElementById('wallet-balance').value) || 0;
     if (!name) return;
-    await fetch('/api/wallets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, balance }) });
+    await apiFetch('/api/wallets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, balance }) });
     closeModal();
     loadWallets();
   }
 });
+
+// Registration Code (global) for Settings
+let regCodeTimer = null;
+async function refreshRegCode() {
+  try {
+    const res = await apiFetch('/api/auth-code');
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById('reg-code').textContent = 'Error';
+      document.getElementById('reg-exp').textContent = data.error || 'Tidak bisa memuat kode';
+      return;
+    }
+    document.getElementById('reg-code').textContent = data.code;
+    startRegCountdown(data.expiresInSec);
+  } catch (e) {
+    document.getElementById('reg-code').textContent = 'Error';
+    document.getElementById('reg-exp').textContent = 'Jaringan bermasalah';
+  }
+}
+
+function startRegCountdown(sec) {
+  if (regCodeTimer) clearInterval(regCodeTimer);
+  let remaining = Number(sec) || 0;
+  const el = document.getElementById('reg-exp');
+  regCodeTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(regCodeTimer);
+      regCodeTimer = null;
+      el.textContent = 'Kode kedaluwarsa — refresh untuk terbaru';
+    } else {
+      el.textContent = `Kedaluwarsa dalam ${remaining}s`;
+    }
+  }, 1000);
+}
+
+// Logout
+function logout() {
+  try { sessionStorage.removeItem('auth_token'); } catch {}
+  try { localStorage.removeItem('auth_token'); } catch {}
+  window.location.href = '/login.html';
+}

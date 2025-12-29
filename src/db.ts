@@ -1,10 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Try loading .env from common locations for local dev
+try {
+	// First: current working directory
+	dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+	// Fallback: project root relative to compiled or src dir
+	if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+		dotenv.config({ path: path.resolve(__dirname, '../.env') });
+	}
+} catch {}
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+	throw new Error('Missing environment variables: SUPABASE_URL or SUPABASE_ANON_KEY');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 

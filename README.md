@@ -96,6 +96,17 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 Endpoints fungsi Netlify:
 - Registrasi: `/api/auth-register` (POST `{ email, password }`)
 - Login: `/api/auth-login` (POST `{ email, password }` → `{ token, userId }`)
+- Semua endpoint data (`/api/transactions`, `/api/wallets`) membutuhkan header `Authorization: Bearer <JWT>`
+- Kode registrasi: `/api/auth-code` (GET, perlu JWT). Kode 6 digit berganti setiap 5 menit.
 
 Tambahkan halaman:
 - `public/register.html` dan `public/login.html` untuk UI.
+
+Proses Registrasi (wajib kode):
+- Buka Settings (sudah login) untuk melihat Kode Registrasi 6-digit.
+- Masukkan kode tersebut di form registrasi (`register.html`).
+- Kode berganti tiap 5 menit; refresh bila kedaluwarsa.
+
+Untuk mewajibkan login:
+- Halaman utama akan otomatis redirect ke `login.html` jika token belum ada.
+- Tombol Logout disediakan di header untuk menghapus token dan kembali ke `login.html`.

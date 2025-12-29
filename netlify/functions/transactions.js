@@ -27,12 +27,29 @@ function getIdFromPath(path) {
   return id;
 }
 
+function getUserFromAuth(event) {
+  try {
+    const auth = event.headers && (event.headers.authorization || event.headers.Authorization);
+    if (!auth || !auth.startsWith('Bearer ')) return null;
+    const token = auth.slice(7);
+    const jwtMod = require('jsonwebtoken');
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+    const payload = jwtMod.verify(token, secret, { algorithms: ['HS256'] });
+    return payload && payload.uid ? payload : null;
+  } catch (_) { return null; }
+}
+
 exports.handler = async (event) => {
   try {
     const supabase = await getSupabase();
     const method = event.httpMethod;
     const id = getIdFromPath(event.path || '');
     const body = event.body ? JSON.parse(event.body) : {};
+
+    // Require auth for all methods
+    const user = getUserFromAuth(event);
+    if (!user) return json(401, { error: 'Unauthorized' });
 
     if (method === 'GET') {
       const { data, error } = await supabase

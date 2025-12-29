@@ -107,6 +107,21 @@
       <h2>About App</h2>
       <button>View</button>
     </div>
+    <div class="setting-item">
+      <div>
+        <h2>Kode Registrasi</h2>
+        <small>Kode berganti tiap 5 menit</small>
+      </div>
+      <div>
+        <strong id="reg-code">••••••</strong>
+        <small id="reg-exp" style="display:block;color:#777"></small>
+        <button class="btn" style="margin-top:8px" onclick="refreshRegCode()">Tampilkan/Refresh</button>
+      </div>
+    </div>
+    <div class="setting-item">
+      <h2>Logout</h2>
+      <button onclick="logout()">Keluar</button>
+    </div>
   </section>
 
   <!-- MANAGE CATEGORIES -->

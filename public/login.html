@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co">
   <title>Login - ManageUang</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="container" style="max-width:420px;margin:40px auto;">
+  <div class="auth-wrap">
+    <div class="auth-card">
     <h2>Login</h2>
-    <form id="login-form" autocomplete="on">
+    <form id="login-form" autocomplete="on" class="auth-form">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" required autocomplete="email" spellcheck="false" autocapitalize="none" />
 
@@ -22,7 +23,8 @@
     <p style="margin-top:12px;">
       Belum punya akun? <a href="/register.html">Registrasi</a>
     </p>
-    <p id="login-msg" style="color:#f44336"></p>
+    <p id="login-msg" class="auth-msg"></p>
+    </div>
   </div>
 
   <script>
@@ -42,9 +44,8 @@
         });
         const data = await res.json();
         if (!res.ok) { msg.textContent = data.error || 'Login gagal'; return; }
-        // Store token securely in memory; localStorage fallback
+        // Store token in sessionStorage (avoids long-lived tokens in localStorage)
         sessionStorage.setItem('auth_token', data.token);
-        localStorage.setItem('auth_token', data.token);
         // Redirect to app
         window.location.href = '/index.html';
       } catch (err) {

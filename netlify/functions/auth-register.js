@@ -26,10 +26,25 @@ exports.handler = async (event) => {
 
     const email = (body.email || '').toString().trim().toLowerCase();
     const password = (body.password || '').toString();
+    const code = (body.code || '').toString().trim();
 
     if (!validateEmail(email) || password.length < 8 || password.length > 72) {
       return json(400, { error: 'Invalid email or password policy failed' });
     }
+
+    // Verify registration code
+    const crypto = await import('crypto');
+    const secret = process.env.OTP_SECRET || process.env.JWT_SECRET;
+    if (!secret) return json(500, { error: 'Server not configured' });
+    const stepMs = 5 * 60 * 1000;
+    const nowMs = Date.now();
+    const windows = [Math.floor(nowMs / stepMs), Math.floor((nowMs - stepMs) / stepMs)]; // allow previous window for small drift
+    const valid = windows.some(w => {
+      const h = crypto.createHmac('sha1', secret).update(String(w)).digest();
+      const c = String(h.readUInt32BE(0) % 1000000).padStart(6, '0');
+      return c === code;
+    });
+    if (!valid) return json(401, { error: 'Invalid registration code' });
 
     // Check existence
     const { data: existing, error: selErr } = await supabase
