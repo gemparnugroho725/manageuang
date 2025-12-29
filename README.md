@@ -48,6 +48,7 @@ Netlify tidak menjalankan server Express. Untuk itu, API di-deploy sebagai Netli
 1. Set environment variables di Netlify (Site Settings > Environment Variables):
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
+  - `JWT_SECRET` (string acak minimal 32 karakter untuk menandatangani token)
 2. Pastikan file `netlify.toml` ada dengan konfigurasi berikut:
 
 ```toml
@@ -73,3 +74,28 @@ Netlify tidak menjalankan server Express. Untuk itu, API di-deploy sebagai Netli
 4. Frontend sudah memakai path `/api/...`, sehingga akan langsung diarahkan ke functions via redirect di atas.
 
 Catatan: Untuk development lokal, gunakan `npm run dev` yang menjalankan Express. Untuk Netlify (production), Express tidak digunakan.
+
+## Auth Kustom (Users Table)
+
+Eksekusi SQL berikut di Supabase (SQL editor) untuk membuat tabel users:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext;
+
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email CITEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+```
+
+Endpoints fungsi Netlify:
+- Registrasi: `/api/auth-register` (POST `{ email, password }`)
+- Login: `/api/auth-login` (POST `{ email, password }` → `{ token, userId }`)
+
+Tambahkan halaman:
+- `public/register.html` dan `public/login.html` untuk UI.
