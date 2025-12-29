@@ -8,6 +8,18 @@ let reportChart = null;
 let selectedHeaderDate = new Date().toISOString().slice(0, 10);
 let selectedPeriod = 'daily'; // 'daily' | 'weekly' | 'monthly'
 
+// Loading overlay helpers
+function showLoading(text = 'Memproses…') {
+  const el = document.getElementById('loading');
+  const lt = document.getElementById('loading-text');
+  if (lt) lt.textContent = text;
+  if (el) el.classList.add('show');
+}
+function hideLoading() {
+  const el = document.getElementById('loading');
+  if (el) el.classList.remove('show');
+}
+
 // Usage counters derived from transactions
 function computeTitleUsage() {
   const counts = {};
@@ -215,12 +227,17 @@ async function addWallet() {
   const balance = Number(prompt("Saldo awal:")) || 0;
   if (!name) return;
 
-  await apiFetch("/api/wallets", {
+  const res = await apiFetch("/api/wallets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, balance })
   });
-
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || "Gagal menambahkan wallet");
+    return;
+  }
+  alert("Wallet berhasil ditambahkan");
   loadWallets();
 }
 
@@ -478,6 +495,7 @@ function populateWalletSelect() {
 /* FORM SUBMIT ADD TX */
 document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   e.preventDefault();
+  showLoading('Menyimpan transaksi…');
   const date = document.getElementById("tx-date").value;
   const walletId = document.getElementById("tx-wallet").value;
   const amount = Number(document.getElementById("tx-amount").value);
@@ -487,16 +505,30 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
 
   if (title === "add-new") {
     title = prompt("Masukkan judul baru:");
-    if (!title) return;
-    await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: title }) });
+    if (!title) { hideLoading(); return; }
+    const addRes = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: title }) });
+    if (!addRes.ok) {
+      const j = await addRes.json().catch(() => ({}));
+      alert(j.error || 'Gagal menambahkan judul');
+      hideLoading();
+      return;
+    }
+    alert('Judul berhasil ditambahkan');
     await loadTitles();
     document.getElementById("tx-title").value = title;
   }
 
   if (category === "add-new-cat") {
     category = prompt("Masukkan kategori baru:");
-    if (!category) return;
-    await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: category }) });
+    if (!category) { hideLoading(); return; }
+    const addRes = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: category }) });
+    if (!addRes.ok) {
+      const j = await addRes.json().catch(() => ({}));
+      alert(j.error || 'Gagal menambahkan kategori');
+      hideLoading();
+      return;
+    }
+    alert('Kategori berhasil ditambahkan');
     await loadCategories();
     document.getElementById("tx-category").value = category;
   }
@@ -513,17 +545,31 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   };
 
   if (editingTxId) {
-    await apiFetch(`/api/transactions/${editingTxId}`, {
+    const txRes = await apiFetch(`/api/transactions/${editingTxId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (!txRes.ok) {
+      const j = await txRes.json().catch(() => ({}));
+      alert(j.error || 'Gagal memperbarui transaksi');
+      hideLoading();
+      return;
+    }
+    alert('Transaksi berhasil diperbarui');
   } else {
-    await apiFetch("/api/transactions", {
+    const txRes = await apiFetch("/api/transactions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (!txRes.ok) {
+      const j = await txRes.json().catch(() => ({}));
+      alert(j.error || 'Gagal menambahkan transaksi');
+      hideLoading();
+      return;
+    }
+    alert('Transaksi berhasil ditambahkan');
   }
 
   load();
@@ -533,6 +579,7 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   document.getElementById("add-tx-title").textContent = "Add Transaction";
   const delBtn = document.getElementById('btn-delete-tx');
   if (delBtn) delBtn.style.display = 'none';
+  hideLoading();
 });
 
 /* NAVIGATION */
@@ -575,11 +622,20 @@ function renderTitlesList() {
 }
 
 /* ADD TITLE */
-function addTitle() {
+async function addTitle() {
   const newTitle = prompt("Masukkan judul baru:");
   if (!newTitle) return;
-  apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newTitle }) })
-    .then(() => { loadTitles(); });
+  showLoading('Menyimpan judul…');
+  const res = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newTitle }) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menambahkan judul');
+    hideLoading();
+    return;
+  }
+  alert('Judul berhasil ditambahkan');
+  await loadTitles();
+  hideLoading();
 }
 
 /* DELETE TITLE */
@@ -607,11 +663,20 @@ function renderCategoriesList() {
 }
 
 /* ADD CATEGORY */
-function addCategory() {
+async function addCategory() {
   const newCat = prompt("Masukkan kategori baru:");
   if (!newCat) return;
-  apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCat }) })
-    .then(() => { loadCategories(); });
+  showLoading('Menyimpan kategori…');
+  const res = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCat }) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menambahkan kategori');
+    hideLoading();
+    return;
+  }
+  alert('Kategori berhasil ditambahkan');
+  await loadCategories();
+  hideLoading();
 }
 
 /* DELETE CATEGORY */
@@ -865,7 +930,13 @@ document.addEventListener('submit', async (e) => {
     const name = document.getElementById('wallet-name').value.trim();
     const balance = Number(document.getElementById('wallet-balance').value) || 0;
     if (!name) return;
-    await apiFetch('/api/wallets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, balance }) });
+    const res = await apiFetch('/api/wallets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, balance }) });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || 'Gagal menambahkan wallet');
+      return;
+    }
+    alert('Wallet berhasil ditambahkan');
     closeModal();
     loadWallets();
   }
