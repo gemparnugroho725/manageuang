@@ -5,6 +5,26 @@ const titleIds = {};
 const categoryIds = {};
 let allTransactions = [];
 let reportChart = null;
+let reportSegmentMap = {};
+function renderReportFilter() {
+  const typeSel = document.getElementById('report-filter-type');
+  const valSel = document.getElementById('report-filter-value');
+  if (!typeSel || !valSel) return;
+  const t = typeSel.value;
+  valSel.innerHTML = '<option value="">Pilih…</option>';
+  if (!t) {
+    valSel.disabled = true;
+    return;
+  }
+  const list = t === 'title' ? (titles || []) : (categories || []);
+  list.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    valSel.appendChild(opt);
+  });
+  valSel.disabled = false;
+}
 let selectedHeaderDate = new Date().toISOString().slice(0, 10);
 let selectedPeriod = 'daily'; // 'daily' | 'weekly' | 'monthly'
 
@@ -312,6 +332,8 @@ function renderTransaksi() {
       cat = parts[0] || 'Lainnya';
       ttl = parts.slice(1).join(':') || '';
     }
+    const desc = (t.description || '').trim();
+    const descHtml = desc ? `<div class="tx-desc">${desc}</div>` : '';
 
     list.innerHTML += `
       <div class="tx" onclick='beginEditTx(${JSON.stringify(t).replace(/'/g, "&apos;")})' style="cursor:pointer">
@@ -323,6 +345,7 @@ function renderTransaksi() {
           <span class="tx-cat">${cat}</span>
           <span class="tx-date">${t.date}</span>
         </div>
+        ${descHtml}
       </div>
     `;
   });
@@ -604,7 +627,15 @@ function switchTab(name, btn) {
   if (name === "manage-titles") renderTitlesList();
 
   if (name === "transaksi") load();
-  if (name === "report") setReportPeriod('daily');
+  if (name === "report") {
+    setReportPeriod('daily');
+    const ft = document.getElementById('report-filter-type');
+    const fv = document.getElementById('report-filter-value');
+    if (ft) ft.value = '';
+    if (fv) { fv.innerHTML = '<option value="">Pilih…</option>'; fv.disabled = true; }
+    renderReportFilter();
+    updateReport();
+  }
 }
 
 /* RENDER TITLES LIST */
@@ -723,6 +754,8 @@ function setReportPeriod(period) {
 function updateReport() {
   const basis = document.getElementById('report-basis').value;
   const type = (document.getElementById('report-type')?.value) || 'pie';
+  const filterType = (document.getElementById('report-filter-type')?.value) || '';
+  const filterValue = (document.getElementById('report-filter-value')?.value) || '';
   const activeTab = document.querySelector('.report-tab.active');
   if (!activeTab) return;
   const period = activeTab.textContent === 'Harian' ? 'daily' : activeTab.textContent === 'Bulanan' ? 'monthly' : 'yearly';
@@ -738,11 +771,13 @@ function updateReport() {
     periodValue = document.getElementById('yearly-year').value;
   }
   
-  generateReport(period, basis, periodValue, type);
+  generateReport(period, basis, periodValue, type, { filterType, filterValue });
 }
 
 /* GENERATE REPORT */
-function generateReport(period, basis, periodValue, chartType = 'pie') {
+function generateReport(period, basis, periodValue, chartType = 'pie', opts = {}) {
+  const filterType = opts.filterType || '';
+  const filterValue = (opts.filterValue || '').trim();
   // Filter transactions based on period
   let filtered = allTransactions;
 
@@ -761,18 +796,34 @@ function generateReport(period, basis, periodValue, chartType = 'pie') {
     });
   }
 
-  // Group by basis for expenses
+  // Further filter by selected single title/category if provided
+  if (filterType && filterValue) {
+    filtered = filtered.filter(t => {
+      const parts = (t.note || '').split(':');
+      const cat = (parts[0] || '').trim();
+      const ttl = (parts.slice(1).join(':') || t.note || '').trim();
+      return filterType === 'title' ? (ttl === filterValue) : (cat === filterValue);
+    });
+  }
+
+  // Decide grouping dimension
+  let groupBy = basis;
+  if (filterType === 'title' && filterValue) groupBy = 'category';
+  if (filterType === 'category' && filterValue) groupBy = 'title';
+
+  // Group by chosen dimension for expenses
   const sums = {};
+  reportSegmentMap = {};
   filtered.forEach(t => {
     if (t.type === 'expense' || t.type === 'transfer') {
-      let key;
-      if (basis === 'category') {
-        key = t.note.split(':')[0] || 'Lainnya';
-      } else {
-        key = t.note.split(':')[1] || t.note || 'Tanpa Judul';
-      }
+      const parts = (t.note || '').split(':');
+      const cat = (parts[0] || 'Lainnya');
+      const ttl = (parts.slice(1).join(':') || t.note || 'Tanpa Judul');
+      const key = groupBy === 'category' ? cat : ttl;
       if (!sums[key]) sums[key] = 0;
       sums[key] += t.amount;
+      if (!reportSegmentMap[key]) reportSegmentMap[key] = [];
+      reportSegmentMap[key].push(t);
     }
   });
 
@@ -792,6 +843,13 @@ function generateReport(period, basis, periodValue, chartType = 'pie') {
     resizeDelay: 200,
     plugins: {
       legend: chartType === 'pie' ? { position: 'bottom' } : { display: false }
+    },
+    onClick: (evt, elements) => {
+      const idx = elements && elements[0] ? elements[0].index : undefined;
+      if (idx === undefined) return;
+      const label = labels[idx];
+      const txs = reportSegmentMap[label] || [];
+      openReportDetail(label, txs);
     }
   };
 
@@ -833,8 +891,79 @@ function generateReport(period, basis, periodValue, chartType = 'pie') {
 
   // Update summary
   const total = data.reduce((a, b) => a + b, 0);
-  document.getElementById('report-summary').innerHTML = `<p>Total: ${formatIDR(total)}</p>`;
+  const info = filterType && filterValue ? `Detail dari ${filterType === 'title' ? 'Judul' : 'Kategori'}: <strong>${filterValue}</strong>` : `Basis: <strong>${groupBy === 'category' ? 'Kategori' : 'Judul'}</strong>`;
+    document.getElementById('report-summary').innerHTML = `<p>${info}</p><p>Total: ${formatIDR(total)}</p><p><small>Klik segmen/bar untuk melihat detail transaksi.</small></p>`;
 }
+
+function renderReportDetail(label, txs) {
+  const el = document.getElementById('report-detail');
+  if (!el) return;
+  if (!txs || !txs.length) {
+    el.innerHTML = `<p>Tidak ada transaksi untuk <strong>${label}</strong>.</p>`;
+    return;
+  }
+  let html = `<h4>Detail: ${label}</h4>`;
+  txs.forEach(t => {
+    const sign = t.type === 'income' ? '+' : t.type === 'transfer' ? '~' : '-';
+    const amountCls = t.type === 'income' ? 'income' : t.type === 'transfer' ? 'transfer' : 'expense';
+    const amountStr = `${sign} ${formatIDR(t.amount)}`;
+    const parts = (t.note || '').split(':');
+    const cat = (parts[0] || 'Lainnya');
+    const ttl = (parts.slice(1).join(':') || t.note || '(Tanpa Judul)');
+    const desc = (t.description || '').trim();
+    html += `
+      <div class="tx">
+        <div class="tx-top">
+          <span class="tx-title">${ttl}</span>
+          <span class="tx-amount ${amountCls}">${amountStr}</span>
+        </div>
+        <div class="tx-bottom">
+          <span class="tx-cat">${cat}</span>
+          <span class="tx-date">${t.date}</span>
+        </div>
+        ${desc ? `<div class="tx-desc">${desc}</div>` : ''}
+      </div>
+    `;
+  });
+  el.innerHTML = html;
+}
+
+  function openReportDetail(label, txs) {
+    const section = document.getElementById('modal-report-detail');
+    const titleEl = document.getElementById('report-detail-title');
+    const listEl = document.getElementById('report-detail-list');
+    if (!section || !titleEl || !listEl) return;
+    titleEl.textContent = `Detail: ${label}`;
+    if (!txs || !txs.length) {
+      listEl.innerHTML = `<p>Tidak ada transaksi.</p>`;
+    } else {
+      let html = '';
+      txs.forEach(t => {
+        const sign = t.type === 'income' ? '+' : t.type === 'transfer' ? '~' : '-';
+        const amountCls = t.type === 'income' ? 'income' : t.type === 'transfer' ? 'transfer' : 'expense';
+        const amountStr = `${sign} ${formatIDR(t.amount)}`;
+        const parts = (t.note || '').split(':');
+        const cat = (parts[0] || 'Lainnya');
+        const ttl = (parts.slice(1).join(':') || t.note || '(Tanpa Judul)');
+        const desc = (t.description || '').trim();
+        html += `
+          <div class="tx">
+            <div class="tx-top">
+              <span class="tx-title">${ttl}</span>
+              <span class="tx-amount ${amountCls}">${amountStr}</span>
+            </div>
+            <div class="tx-bottom">
+              <span class="tx-cat">${cat}</span>
+              <span class="tx-date">${t.date}</span>
+            </div>
+            ${desc ? `<div class="tx-desc">${desc}</div>` : ''}
+          </div>
+        `;
+      });
+      listEl.innerHTML = html;
+    }
+    openModalWith(section);
+  }
 
 // Initial load on page ready
 window.addEventListener('DOMContentLoaded', () => {
@@ -846,6 +975,7 @@ window.addEventListener('DOMContentLoaded', () => {
   load();
   // Prepare report defaults
   setReportPeriod('daily');
+  renderReportFilter();
   // Initialize header period controls
   const periodSel = document.getElementById('header-period');
   const prevBtn = document.getElementById('header-prev');

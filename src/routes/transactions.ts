@@ -14,13 +14,14 @@ transactionsRouter.get("/", async (_, res) => {
 });
 
 transactionsRouter.post("/", async (req, res) => {
-  const { type, amount, note, date, wallet_id } = req.body;
+  const { type, amount, note, date, wallet_id, description } = req.body;
 
   if (!type || !amount || !date) {
     return res.status(400).json({ error: "Invalid data" });
   }
 
   const payload: any = { type, amount, note: note ?? "", date };
+  if (description !== undefined) payload.description = description ?? "";
   if (wallet_id) payload.wallet_id = Number(wallet_id);
 
   const { error } = await supabase
@@ -33,13 +34,14 @@ transactionsRouter.post("/", async (req, res) => {
 
 /* UPDATE TRANSACTION */
 transactionsRouter.put("/:id", async (req, res) => {
-  const { type, amount, note, date, wallet_id } = req.body;
+  const { type, amount, note, date, wallet_id, description } = req.body;
   const updates: any = {};
   if (type !== undefined) updates.type = type;
   if (amount !== undefined) updates.amount = amount;
   if (note !== undefined) updates.note = note ?? "";
   if (date !== undefined) updates.date = date;
   if (wallet_id !== undefined) updates.wallet_id = Number(wallet_id);
+  if (description !== undefined) updates.description = description ?? "";
 
   const { error } = await supabase
     .from('transactions')

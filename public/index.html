@@ -167,6 +167,16 @@
           <option value="bar">Diagram Batang</option>
         </select>
       </label>
+      <label>Detail dari:
+        <select id="report-filter-type" onchange="renderReportFilter()">
+          <option value="">— Tidak ada —</option>
+          <option value="title">Judul</option>
+          <option value="category">Kategori</option>
+        </select>
+      </label>
+      <select id="report-filter-value" style="min-width:140px" onchange="updateReport()" disabled>
+        <option value="">Pilih…</option>
+      </select>
       <div id="period-selector"></div>
       <button id="apply-report" onclick="updateReport()">Terapkan</button>
     </div>
@@ -221,6 +231,12 @@
     <button type="submit">Simpan</button>
     <button type="button" onclick="closeModal()">Batal</button>
   </form>
+</section>
+
+<!-- REPORT DETAIL MODAL CONTENT (hidden template) -->
+<section id="modal-report-detail" style="display:none">
+  <h3 id="report-detail-title">Detail</h3>
+  <div id="report-detail-list"></div>
 </section>
 
 <!-- LOADING OVERLAY -->

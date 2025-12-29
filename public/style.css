@@ -156,8 +156,15 @@ header {
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.25);
   background: rgba(255,255,255,0.16);
-  color: #fff;
+  color: #fff; /* white text on blue header */
   outline: none;
+}
+
+/* Dropdown list: black text on white for readability */
+.header-controls select option,
+.header-controls select optgroup {
+  color: #000;
+  background: #fff;
 }
 
 .header-controls input[type="date"]::-webkit-calendar-picker-indicator,
@@ -180,7 +187,7 @@ header {
 .period-nav button {
   border: none;
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: #fff; /* white text on blue header */
   padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
@@ -188,6 +195,7 @@ header {
 
 .period-nav button:hover {
   background: rgba(255, 255, 255, 0.3);
+  color: #fff;
 }
 
 .summary {
@@ -276,6 +284,11 @@ header .summary #balance { color: #fff; }
 .tx-date {
   color: #777;
   font-size: 12px;
+}
+
+.tx-desc {
+  color: #555;
+  font-size: 13px;
 }
 
 /* TX OPTIONS */
@@ -465,6 +478,9 @@ header .summary #balance { color: #fff; }
   align-items: center;
 }
 
+.report-controls label { margin-right: 10px; }
+.report-controls select { margin-right: 6px; }
+
 #report-chart-wrap {
   width: 100%;
   height: 260px;
@@ -480,11 +496,14 @@ header .summary #balance { color: #fff; }
   height: 100% !important;
   display: block;
   margin: 0 auto;
+  cursor: pointer;
 }
 
 #report-summary {
   margin-top: 20px;
 }
+
+#report-detail { margin-top: 10px; }
 
 #page-report h3 { text-align: center; }
 

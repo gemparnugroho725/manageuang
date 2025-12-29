@@ -65,9 +65,14 @@ exports.handler = async (event) => {
       if (!type || !amount || !date) {
         return json(400, { error: 'Invalid data' });
       }
-      const payload = { type, amount, note: note ?? '', date, description: description ?? '' };
+      let payload = { type, amount, note: note ?? '', date };
+      if (description !== undefined) payload.description = description ?? '';
       if (wallet_id) payload.wallet_id = Number(wallet_id);
-      const { error } = await supabase.from('transactions').insert([payload]);
+      let { error } = await supabase.from('transactions').insert([payload]);
+      if (error && String(error.message).includes("'description' column")) {
+        delete payload.description;
+        ({ error } = await supabase.from('transactions').insert([payload]));
+      }
       if (error) return json(500, { error: error.message });
       return json(200, { success: true });
     }
@@ -82,7 +87,11 @@ exports.handler = async (event) => {
       if (date !== undefined) updates.date = date;
       if (wallet_id !== undefined) updates.wallet_id = Number(wallet_id);
       if (description !== undefined) updates.description = description ?? '';
-      const { error } = await supabase.from('transactions').update(updates).eq('id', id);
+      let { error } = await supabase.from('transactions').update(updates).eq('id', id);
+      if (error && String(error.message).includes("'description' column")) {
+        delete updates.description;
+        ({ error } = await supabase.from('transactions').update(updates).eq('id', id));
+      }
       if (error) return json(500, { error: error.message });
       return json(200, { success: true });
     }
