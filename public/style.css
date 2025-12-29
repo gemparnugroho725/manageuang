@@ -636,6 +636,15 @@ header .summary #balance { color: #fff; }
   cursor: pointer;
 }
 .dual-panel button:hover { background: #1976d2; }
+/* Add button at top spacing */
+.dual-panel .add-top { margin-bottom: 10px; }
+
+/* Limit manage categories lists to ~10 items with scroll */
+.scroll-list {
+  max-height: 460px; /* ~10 items depending on font/spacing */
+  overflow-y: auto;
+  padding-right: 6px;
+}
 
 @media (min-width: 800px) {
   .dual-grid { grid-template-columns: 1fr 1fr; }
