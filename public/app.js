@@ -6,6 +6,11 @@ const categoryIds = {};
 let allTransactions = [];
 let reportChart = null;
 let reportSegmentMap = {};
+// Manage pages type state
+let manageCategoriesType = 'expense';
+let manageTitlesType = 'expense';
+// Settings panels type state
+// Removed Settings panels state (lists now only in edit pages)
 function renderReportFilter() {
   const typeSel = document.getElementById('report-filter-type');
   const valSel = document.getElementById('report-filter-value');
@@ -16,7 +21,16 @@ function renderReportFilter() {
     valSel.disabled = true;
     return;
   }
-  const list = t === 'title' ? (titles || []) : (categories || []);
+  // Use unique names derived from transactions to cover both income/expense sets
+  const set = new Set();
+  (allTransactions || []).forEach(tx => {
+    const parts = (tx.note || '').split(':');
+    const cat = (parts[0] || '').trim();
+    const ttl = (parts.slice(1).join(':') || tx.note || '').trim();
+    if (t === 'title' && ttl) set.add(ttl);
+    if (t === 'category' && cat) set.add(cat);
+  });
+  const list = Array.from(set).sort((a, b) => a.localeCompare(b));
   list.forEach(name => {
     const opt = document.createElement('option');
     opt.value = name;
@@ -191,8 +205,9 @@ async function loadWallets() {
   renderWallets();
 }
 
-async function loadTitles() {
-  const res = await apiFetch('/api/titles');
+async function loadTitles(type = '') {
+  const qs = type ? (`?type=${encodeURIComponent(type)}`) : '';
+  const res = await apiFetch('/api/titles' + qs);
   const data = await res.json();
   // Reset
   titles = [];
@@ -202,8 +217,9 @@ async function loadTitles() {
   if (document.getElementById('page-manage-titles')?.classList.contains('active')) renderTitlesList();
 }
 
-async function loadCategories() {
-  const res = await apiFetch('/api/categories');
+async function loadCategories(type = '') {
+  const qs = type ? (`?type=${encodeURIComponent(type)}`) : '';
+  const res = await apiFetch('/api/categories' + qs);
   const data = await res.json();
   categories = [];
   Object.keys(categoryIds).forEach(k => delete categoryIds[k]);
@@ -212,9 +228,9 @@ async function loadCategories() {
   if ((data || []).length === 0) {
     const defaults = ["Makan", "Transport", "Belanja", "Pendidikan", "Hiburan"];
     for (const name of defaults) {
-      await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type }) });
     }
-    return loadCategories();
+    return loadCategories(type);
   }
   populateCategorySelect();
   if (document.getElementById('page-manage-categories')?.classList.contains('active')) renderCategoriesList();
@@ -223,12 +239,20 @@ async function loadCategories() {
 function renderWallets() {
   const el = document.getElementById("wallet-list");
   el.innerHTML = "";
+  const incomeByWallet = {};
+  (allTransactions || []).forEach(t => {
+    if (!t || !t.wallet_id) return;
+    if (t.type === 'income') {
+      incomeByWallet[t.wallet_id] = (incomeByWallet[t.wallet_id] || 0) + Number(t.amount || 0);
+    }
+  });
 
   wallets.forEach(w => {
+    const synced = incomeByWallet[w.id] || 0;
     el.innerHTML += `
       <div class="wallet-item">
         <strong>${w.name}</strong>
-        <div>Saldo: ${formatIDR(w.balance)}</div>
+        <div>Saldo: ${formatIDR(synced)}</div>
         <button class="icon-button" onclick="editWallet(${w.id}, '${w.name.replace(/'/g, "\'")}', ${w.balance})">
           <span class="material-symbols-outlined">edit</span>
           Edit
@@ -292,6 +316,7 @@ async function load() {
   allTransactions = await res.json();
 
   renderTransaksi();
+  renderWallets();
 }
 
 /* RENDER TRANSAKSI */
@@ -389,12 +414,12 @@ async function beginEditTx(t) {
     ttl = t.note || '';
   }
   if (ttl && !titles.includes(ttl)) {
-    await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ttl }) });
-    await loadTitles();
+    await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ttl, type: selectedTxType }) });
+    await loadTitles(selectedTxType);
   }
   if (cat && !categories.includes(cat)) {
-    await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cat }) });
-    await loadCategories();
+    await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cat, type: selectedTxType }) });
+    await loadCategories(selectedTxType);
   }
   document.getElementById("tx-date").value = t.date;
   document.getElementById("tx-wallet").value = t.wallet_id || '';
@@ -456,11 +481,13 @@ function handleFabClick() {
 
 /* SELECT TX TYPE */
 let selectedTxType = "";
-function selectTxType(type) {
+async function selectTxType(type) {
   selectedTxType = type;
   document.getElementById("add-tx-title").textContent = 
     type === "income" ? "Add Pemasukan" : type === "expense" ? "Add Pengeluaran" : "Add Transfer";
   document.getElementById("tx-date").value = selectedHeaderDate;
+  await loadTitles(selectedTxType);
+  await loadCategories(selectedTxType);
   populateTitleSelect();
   populateCategorySelect();
   populateWalletSelect();
@@ -529,7 +556,7 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
   if (title === "add-new") {
     title = prompt("Masukkan judul baru:");
     if (!title) { hideLoading(); return; }
-    const addRes = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: title }) });
+    const addRes = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: title, type: selectedTxType }) });
     if (!addRes.ok) {
       const j = await addRes.json().catch(() => ({}));
       alert(j.error || 'Gagal menambahkan judul');
@@ -537,14 +564,14 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
       return;
     }
     alert('Judul berhasil ditambahkan');
-    await loadTitles();
+    await loadTitles(selectedTxType);
     document.getElementById("tx-title").value = title;
   }
 
   if (category === "add-new-cat") {
     category = prompt("Masukkan kategori baru:");
     if (!category) { hideLoading(); return; }
-    const addRes = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: category }) });
+    const addRes = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: category, type: selectedTxType }) });
     if (!addRes.ok) {
       const j = await addRes.json().catch(() => ({}));
       alert(j.error || 'Gagal menambahkan kategori');
@@ -552,7 +579,7 @@ document.getElementById("form-add-tx").addEventListener("submit", async (e) => {
       return;
     }
     alert('Kategori berhasil ditambahkan');
-    await loadCategories();
+    await loadCategories(selectedTxType);
     document.getElementById("tx-category").value = category;
   }
 
@@ -619,12 +646,10 @@ function switchTab(name, btn) {
     document.getElementById("tx-options-mini").style.display = "none";
   }
 
-  if (name === "setting") {
-    // No render here
-  }
+  // No lists shown in Settings; use dedicated edit pages
 
-  if (name === "manage-categories") renderCategoriesList();
-  if (name === "manage-titles") renderTitlesList();
+  if (name === "manage-categories") { renderManageCategoriesDual(); }
+  if (name === "manage-titles") { renderManageTitlesDual(); }
 
   if (name === "transaksi") load();
   if (name === "report") {
@@ -636,6 +661,138 @@ function switchTab(name, btn) {
     renderReportFilter();
     updateReport();
   }
+}
+
+async function fetchCategoriesByType(type) {
+  const qs = type ? (`?type=${encodeURIComponent(type)}`) : '';
+  const res = await apiFetch('/api/categories' + qs);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+async function fetchTitlesByType(type) {
+  const qs = type ? (`?type=${encodeURIComponent(type)}`) : '';
+  const res = await apiFetch('/api/titles' + qs);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+async function renderManageCategoriesDual() {
+  const expEl = document.getElementById('manage-categories-expense');
+  const incEl = document.getElementById('manage-categories-income');
+  if (!expEl || !incEl) return;
+  const [expCats, incCats] = await Promise.all([
+    fetchCategoriesByType('expense'),
+    fetchCategoriesByType('income')
+  ]);
+  expEl.innerHTML = '';
+  incEl.innerHTML = '';
+  const usage = computeCategoryUsage();
+  expCats.forEach(c => {
+    const count = usage[c.name] || 0;
+    expEl.innerHTML += `
+      <div class="manage-item">
+        <span>${c.name} ${count ? '<small style="color:#777">(' + count + ')</small>' : ''}</span>
+        <button onclick="deleteCategoryDual(${c.id}, 'expense')">Delete</button>
+      </div>
+    `;
+  });
+  incCats.forEach(c => {
+    const count = usage[c.name] || 0;
+    incEl.innerHTML += `
+      <div class="manage-item">
+        <span>${c.name} ${count ? '<small style="color:#777">(' + count + ')</small>' : ''}</span>
+        <button onclick="deleteCategoryDual(${c.id}, 'income')">Delete</button>
+      </div>
+    `;
+  });
+}
+
+async function renderManageTitlesDual() {
+  const expEl = document.getElementById('manage-titles-expense');
+  const incEl = document.getElementById('manage-titles-income');
+  if (!expEl || !incEl) return;
+  const [expTitles, incTitles] = await Promise.all([
+    fetchTitlesByType('expense'),
+    fetchTitlesByType('income')
+  ]);
+  expEl.innerHTML = '';
+  incEl.innerHTML = '';
+  const usage = computeTitleUsage();
+  expTitles.forEach(t => {
+    const count = usage[t.name] || 0;
+    expEl.innerHTML += `
+      <div class="manage-item">
+        <span>${t.name} ${count ? '<small style="color:#777">(' + count + ')</small>' : ''}</span>
+        <button onclick="deleteTitleDual(${t.id}, 'expense')">Delete</button>
+      </div>
+    `;
+  });
+  incTitles.forEach(t => {
+    const count = usage[t.name] || 0;
+    incEl.innerHTML += `
+      <div class="manage-item">
+        <span>${t.name} ${count ? '<small style="color:#777">(' + count + ')</small>' : ''}</span>
+        <button onclick="deleteTitleDual(${t.id}, 'income')">Delete</button>
+      </div>
+    `;
+  });
+}
+
+async function addCategoryDual(type) {
+  const name = prompt(type === 'income' ? 'Masukkan kategori pemasukan:' : 'Masukkan kategori pengeluaran:');
+  if (!name) return;
+  showLoading('Menyimpan kategori…');
+  const res = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type }) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menambahkan kategori');
+    hideLoading();
+    return;
+  }
+  alert('Kategori berhasil ditambahkan');
+  await renderManageCategoriesDual();
+  hideLoading();
+}
+
+async function addTitleDual(type) {
+  const name = prompt(type === 'income' ? 'Masukkan judul pemasukan:' : 'Masukkan judul pengeluaran:');
+  if (!name) return;
+  showLoading('Menyimpan judul…');
+  const res = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type }) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menambahkan judul');
+    hideLoading();
+    return;
+  }
+  alert('Judul berhasil ditambahkan');
+  await renderManageTitlesDual();
+  hideLoading();
+}
+
+async function deleteCategoryDual(id, type) {
+  if (!id) return;
+  if (!confirm('Hapus kategori ini?')) return;
+  const res = await apiFetch(`/api/categories/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menghapus kategori');
+    return;
+  }
+  await renderManageCategoriesDual();
+}
+
+async function deleteTitleDual(id, type) {
+  if (!id) return;
+  if (!confirm('Hapus judul ini?')) return;
+  const res = await apiFetch(`/api/titles/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    alert(j.error || 'Gagal menghapus judul');
+    return;
+  }
+  await renderManageTitlesDual();
 }
 
 /* RENDER TITLES LIST */
@@ -657,7 +814,8 @@ async function addTitle() {
   const newTitle = prompt("Masukkan judul baru:");
   if (!newTitle) return;
   showLoading('Menyimpan judul…');
-  const res = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newTitle }) });
+  const typeForAdd = document.getElementById('page-manage-titles')?.classList.contains('active') ? manageTitlesType : (selectedTxType || 'expense');
+  const res = await apiFetch('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newTitle, type: typeForAdd }) });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     alert(j.error || 'Gagal menambahkan judul');
@@ -665,7 +823,7 @@ async function addTitle() {
     return;
   }
   alert('Judul berhasil ditambahkan');
-  await loadTitles();
+  await loadTitles(typeForAdd);
   hideLoading();
 }
 
@@ -676,7 +834,7 @@ function deleteTitleByName(name) {
   const id = titleIds[name];
   if (!id) { alert('ID judul tidak ditemukan'); return; }
   apiFetch(`/api/titles/${id}`, { method: 'DELETE' })
-    .then(() => loadTitles());
+    .then(() => loadTitles(manageTitlesType));
 }
 
 /* RENDER CATEGORIES LIST */
@@ -698,7 +856,8 @@ async function addCategory() {
   const newCat = prompt("Masukkan kategori baru:");
   if (!newCat) return;
   showLoading('Menyimpan kategori…');
-  const res = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCat }) });
+  const typeForAdd = document.getElementById('page-manage-categories')?.classList.contains('active') ? manageCategoriesType : (selectedTxType || 'expense');
+  const res = await apiFetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newCat, type: typeForAdd }) });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     alert(j.error || 'Gagal menambahkan kategori');
@@ -706,7 +865,7 @@ async function addCategory() {
     return;
   }
   alert('Kategori berhasil ditambahkan');
-  await loadCategories();
+  await loadCategories(typeForAdd);
   hideLoading();
 }
 
@@ -717,7 +876,7 @@ function deleteCategoryByName(name) {
   const id = categoryIds[name];
   if (!id) { alert('ID kategori tidak ditemukan'); return; }
   apiFetch(`/api/categories/${id}`, { method: 'DELETE' })
-    .then(() => loadCategories());
+    .then(() => loadCategories(manageCategoriesType));
 }
 
 /* SWITCH REPORT */
@@ -807,9 +966,13 @@ function generateReport(period, basis, periodValue, chartType = 'pie', opts = {}
   }
 
   // Decide grouping dimension
-  let groupBy = basis;
+  let groupBy = basis; // 'category' | 'title' | 'wallet'
   if (filterType === 'title' && filterValue) groupBy = 'category';
   if (filterType === 'category' && filterValue) groupBy = 'title';
+
+  // Build wallet id->name map for grouping when needed
+  const walletNameById = {};
+  (wallets || []).forEach(w => { walletNameById[w.id] = w.name; });
 
   // Group by chosen dimension for expenses
   const sums = {};
@@ -819,7 +982,7 @@ function generateReport(period, basis, periodValue, chartType = 'pie', opts = {}
       const parts = (t.note || '').split(':');
       const cat = (parts[0] || 'Lainnya');
       const ttl = (parts.slice(1).join(':') || t.note || 'Tanpa Judul');
-      const key = groupBy === 'category' ? cat : ttl;
+      const key = groupBy === 'category' ? cat : (groupBy === 'title' ? ttl : (walletNameById[t.wallet_id] || 'Tanpa Wallet'));
       if (!sums[key]) sums[key] = 0;
       sums[key] += t.amount;
       if (!reportSegmentMap[key]) reportSegmentMap[key] = [];
@@ -891,7 +1054,10 @@ function generateReport(period, basis, periodValue, chartType = 'pie', opts = {}
 
   // Update summary
   const total = data.reduce((a, b) => a + b, 0);
-  const info = filterType && filterValue ? `Detail dari ${filterType === 'title' ? 'Judul' : 'Kategori'}: <strong>${filterValue}</strong>` : `Basis: <strong>${groupBy === 'category' ? 'Kategori' : 'Judul'}</strong>`;
+  const basisLabel = groupBy === 'category' ? 'Kategori' : (groupBy === 'title' ? 'Judul' : 'Wallet');
+  const info = filterType && filterValue
+    ? `Detail dari ${filterType === 'title' ? 'Judul' : 'Kategori'}: <strong>${filterValue}</strong>`
+    : `Basis: <strong>${basisLabel}</strong>`;
     document.getElementById('report-summary').innerHTML = `<p>${info}</p><p>Total: ${formatIDR(total)}</p><p><small>Klik segmen/bar untuk melihat detail transaksi.</small></p>`;
 }
 
@@ -1000,6 +1166,21 @@ window.addEventListener('DOMContentLoaded', () => {
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 });
+
+// Removed Settings-specific list rendering and handlers
+
+// Manage pages type handlers
+function setManageCategoriesType(type) {
+  manageCategoriesType = type;
+  loadCategories(manageCategoriesType).then(renderCategoriesList);
+  updateToggleActive('manage-cat', type);
+}
+
+function setManageTitlesType(type) {
+  manageTitlesType = type;
+  loadTitles(manageTitlesType).then(renderTitlesList);
+  updateToggleActive('manage-title', type);
+}
 
 // Keep modal helpers at file end to avoid hoisting surprises
 let modalOriginalParent = null;

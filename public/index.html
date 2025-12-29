@@ -127,17 +127,37 @@
   <!-- MANAGE CATEGORIES -->
   <section id="page-manage-categories" class="page">
     <h3>Manage Categories</h3>
-    <div id="categories-container"></div>
-    <button onclick="addCategory()">Add Category</button>
-    <button onclick="switchTab('setting')">Back</button>
+    <div class="dual-grid">
+      <div class="dual-panel">
+        <h4>Pengeluaran</h4>
+        <div id="manage-categories-expense"></div>
+        <button onclick="addCategoryDual('expense')">Tambah Pengeluaran</button>
+      </div>
+      <div class="dual-panel">
+        <h4>Pemasukan</h4>
+        <div id="manage-categories-income"></div>
+        <button onclick="addCategoryDual('income')">Tambah Pemasukan</button>
+      </div>
+    </div>
+    <button style="margin-top:12px" onclick="switchTab('setting')">Back</button>
   </section>
 
   <!-- MANAGE TITLES -->
   <section id="page-manage-titles" class="page">
     <h3>Manage Titles</h3>
-    <div id="titles-container"></div>
-    <button onclick="addTitle()">Add Title</button>
-    <button onclick="switchTab('setting')">Back</button>
+    <div class="dual-grid">
+      <div class="dual-panel">
+        <h4>Pengeluaran</h4>
+        <div id="manage-titles-expense"></div>
+        <button onclick="addTitleDual('expense')">Tambah Pengeluaran</button>
+      </div>
+      <div class="dual-panel">
+        <h4>Pemasukan</h4>
+        <div id="manage-titles-income"></div>
+        <button onclick="addTitleDual('income')">Tambah Pemasukan</button>
+      </div>
+    </div>
+    <button style="margin-top:12px" onclick="switchTab('setting')">Back</button>
   </section>
 </main>
 
@@ -159,6 +179,7 @@
         <select id="report-basis">
           <option value="category">Kategori</option>
           <option value="title">Judul</option>
+          <option value="wallet">Wallet</option>
         </select>
       </label>
       <label>Tipe:

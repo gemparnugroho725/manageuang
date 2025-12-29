@@ -43,26 +43,39 @@ exports.handler = async (event) => {
     if (!user) return json(401, { error: 'Unauthorized' });
 
     if (method === 'GET') {
-      const { data, error } = await supabase.from('titles').select('id, name').order('name');
+      const type = (event.queryStringParameters && event.queryStringParameters.type) || '';
+      let q = supabase.from('titles').select('id, name').order('name');
+      let { data, error } = type ? await q.eq('type', type) : await q;
+      if (error && String(error.message).includes("'type' column")) {
+        ({ data, error } = await supabase.from('titles').select('id, name').order('name'));
+      }
       if (error) return json(500, { error: error.message });
       return json(200, data || []);
     }
 
     if (method === 'POST') {
       const name = (body.name || '').toString().trim();
+      const type = (body.type || '').toString().trim();
       if (!name) return json(400, { error: 'Name required' });
       const { data: existing, error: selErr } = await supabase
         .from('titles')
-        .select('id, name')
+        .select('id, name, type')
         .ilike('name', name)
         .limit(1);
       if (selErr) return json(500, { error: selErr.message });
-      if (existing && existing[0]) return json(200, existing[0]);
-      const { data, error } = await supabase
+      if (existing && existing[0]) {
+        if (!type || !existing[0].type || existing[0].type === type) return json(200, { id: existing[0].id, name: existing[0].name });
+      }
+      let ins = [{ name }];
+      if (type) ins[0].type = type;
+      let { data, error } = await supabase
         .from('titles')
-        .insert([{ name }])
+        .insert(ins)
         .select('id, name')
         .single();
+      if (error && String(error.message).includes("'type' column")) {
+        ({ data, error } = await supabase.from('titles').insert([{ name }]).select('id, name').single());
+      }
       if (error) return json(500, { error: error.message });
       return json(200, data);
     }
